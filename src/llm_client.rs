@@ -54,15 +54,14 @@ impl LLMConfig {
     pub fn load() -> Result<Self> {
         dotenv::dotenv().ok();
 
-        let base_url = env::var("BASE_URL")
-            .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".to_string());
-        
-        let api_key = env::var("API_KEY")
-            .context("必须在 .env 文件或环境中设置 API_KEY")?;
+        let base_url = env::var("BASE_URL").unwrap_or_else(|_| {
+            "https://generativelanguage.googleapis.com/v1beta/openai".to_string()
+        });
 
-        let model = env::var("MODEL")
-            .unwrap_or_else(|_| "gemini-1.5-flash".to_string());
-        
+        let api_key = env::var("API_KEY").context("必须在 .env 文件或环境中设置 API_KEY")?;
+
+        let model = env::var("MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
+
         let temperature = env::var("TEMPERATURE")
             .ok()
             .and_then(|s| s.parse::<f32>().ok())
@@ -110,8 +109,9 @@ impl LLMClient {
 
         println!("{:#?}", self.config);
 
-        let response = self.client
-            .post(&format!("{}/chat/completions", self.config.base_url))
+        let response = self
+            .client
+            .post(format!("{}/chat/completions", self.config.base_url))
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .header("Content-Type", "application/json")
             .json(&request_body)
@@ -124,7 +124,7 @@ impl LLMClient {
         }
 
         let response_data: OpenAIResponse = response.json().await?;
-        
+
         if let Some(choice) = response_data.choices.first() {
             Ok(choice.message.content.trim().to_string())
         } else {
@@ -132,9 +132,14 @@ impl LLMClient {
         }
     }
 
-    pub async fn generate_note_with_images(&self, prompt: &str, paper_content: &str, image_references: &[String]) -> Result<String> {
+    pub async fn generate_note_with_images(
+        &self,
+        prompt: &str,
+        paper_content: &str,
+        image_references: &[String],
+    ) -> Result<String> {
         let mut full_content = paper_content.to_string();
-        
+
         if !image_references.is_empty() {
             full_content.push_str("\n\n图像文件列表:\n");
             for (i, img) in image_references.iter().enumerate() {

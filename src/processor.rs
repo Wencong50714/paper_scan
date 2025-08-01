@@ -38,24 +38,26 @@ impl PaperProcessor {
 
     pub async fn process(&self, paper_data: PaperData) -> Result<ProcessedContent> {
         let archive_path = paper_data.archive_path.clone();
-        
+
         // Extract archive contents
         let extracted = self.extractor.extract(paper_data)?;
-        
+
         // Process the extracted content
         let result = self.process_extracted_content(extracted);
-        
+
         // Clean up the downloaded archive after successful processing
-        if result.is_ok() {
-            if archive_path.exists() {
-                if let Err(e) = std::fs::remove_file(&archive_path) {
-                    eprintln!("Warning: Failed to remove downloaded archive {}: {}", archive_path.display(), e);
-                } else {
-                    println!("Cleaned up downloaded archive: {}", archive_path.display());
-                }
+        if result.is_ok() && archive_path.exists() {
+            if let Err(e) = std::fs::remove_file(&archive_path) {
+                eprintln!(
+                    "Warning: Failed to remove downloaded archive {}: {}",
+                    archive_path.display(),
+                    e
+                );
+            } else {
+                println!("Cleaned up downloaded archive: {}", archive_path.display());
             }
         }
-        
+
         result
     }
 
@@ -98,39 +100,42 @@ impl PaperProcessor {
 
         if files_read > 0 {
             full_text = self.clean_tex_content(&all_content);
-            
+
             // Extract metadata from combined content
             title = self.extract_title(&all_content);
             authors = self.extract_authors(&all_content);
             abstract_text = self.extract_abstract(&all_content);
-            
+
             // Extract sections
             sections = self.extract_sections(&all_content);
-            
+
             // Extract figures and equations
             figure_references = self.extract_figures(&all_content);
             equations = self.extract_equations(&all_content);
-            
-            println!("Successfully processed {} TeX files", files_read);
+
+            println!("Successfully processed {files_read} TeX files");
         } else {
             eprintln!("No TeX files could be read for processing");
         }
 
         // Collect image file paths
-        let image_files: Vec<String> = extracted.image_files
+        let image_files: Vec<String> = extracted
+            .image_files
             .iter()
             .map(|p| p.to_string_lossy().to_string())
             .collect();
 
         // Extract paper ID from the output directory name
-        let paper_id = extracted.extracted_dir.parent()
+        let paper_id = extracted
+            .extracted_dir
+            .parent()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
-        
-        println!("Using paper ID: {}", paper_id);
-        
+
+        println!("Using paper ID: {paper_id}");
+
         Ok(ProcessedContent {
             paper_id,
             title,
@@ -158,13 +163,18 @@ impl PaperProcessor {
         let cleaned = re.replace_all(&cleaned, "");
 
         // Remove other common formatting commands but keep arguments
-        let re = Regex::new(r"\\(textbf|textit|emph|texttt|small|large|Large|LARGE|huge|Huge)\{([^}]*)\}").unwrap();
+        let re = Regex::new(
+            r"\\(textbf|textit|emph|texttt|small|large|Large|LARGE|huge|Huge)\{([^}]*)\}",
+        )
+        .unwrap();
         let cleaned = re.replace_all(&cleaned, "$2");
 
         // Clean up extra whitespace
         let cleaned = cleaned.replace("\n\n\n", "\n\n");
         let cleaned = cleaned.replace("  ", " ");
-        let cleaned = Regex::new(r"\n\s*\n\s*\n").unwrap().replace_all(&cleaned, "\n\n");
+        let cleaned = Regex::new(r"\n\s*\n\s*\n")
+            .unwrap()
+            .replace_all(&cleaned, "\n\n");
 
         cleaned.trim().to_string()
     }
@@ -184,11 +194,12 @@ impl PaperProcessor {
     fn extract_authors(&self, content: &str) -> Vec<String> {
         let re = Regex::new(r"\\author\{([^}]*)\}").unwrap();
         let mut authors = Vec::new();
-        
+
         for caps in re.captures_iter(content) {
             if let Some(author) = caps.get(1) {
                 // Split by commas and clean up
-                let author_names: Vec<String> = author.as_str()
+                let author_names: Vec<String> = author
+                    .as_str()
                     .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
@@ -196,7 +207,7 @@ impl PaperProcessor {
                 authors.extend(author_names);
             }
         }
-        
+
         authors
     }
 
@@ -205,9 +216,9 @@ impl PaperProcessor {
         let patterns = [
             r"\\begin\{abstract\}(.*?)\\end\{abstract\}",
             r"\\abstract\{([^}]*)\}",
-            r"\\section\*?\{abstract\}([^\\]*)"
+            r"\\section\*?\{abstract\}([^\\]*)",
         ];
-        
+
         for pattern in &patterns {
             let re = Regex::new(pattern).unwrap();
             if let Some(caps) = re.captures(content) {
@@ -217,35 +228,35 @@ impl PaperProcessor {
                 }
             }
         }
-        
+
         String::new()
     }
 
     fn extract_sections(&self, content: &str) -> Vec<Section> {
         let mut sections = Vec::new();
-        
+
         // Extract sections and subsections
         let section_re = Regex::new(r"\\section\{([^}]*)\}").unwrap();
         let subsection_re = Regex::new(r"\\subsection\{([^}]*)\}").unwrap();
-        
+
         // Find section boundaries
         let mut positions = Vec::new();
-        
+
         for caps in section_re.captures_iter(content) {
             if let Some(m) = caps.get(0) {
                 positions.push((m.start(), m.end(), caps.get(1).unwrap().as_str(), 1));
             }
         }
-        
+
         for caps in subsection_re.captures_iter(content) {
             if let Some(m) = caps.get(0) {
                 positions.push((m.start(), m.end(), caps.get(1).unwrap().as_str(), 2));
             }
         }
-        
+
         // Sort by position
         positions.sort_by_key(|k| k.0);
-        
+
         // Extract content between sections
         for i in 0..positions.len() {
             let (start, _, title, level) = positions[i];
@@ -254,36 +265,36 @@ impl PaperProcessor {
             } else {
                 content.len()
             };
-            
+
             let section_content = content[start..end].to_string();
             let cleaned_content = self.clean_tex_content(&section_content);
-            
+
             sections.push(Section {
                 title: title.to_string(),
                 content: cleaned_content,
                 level,
             });
         }
-        
+
         sections
     }
 
     fn extract_figures(&self, content: &str) -> Vec<String> {
         let re = Regex::new(r"\\includegraphics(?:\[[^]]*\])?\{([^}]*)\}").unwrap();
         let mut figures = Vec::new();
-        
+
         for caps in re.captures_iter(content) {
             if let Some(fig) = caps.get(1) {
                 figures.push(fig.as_str().to_string());
             }
         }
-        
+
         figures
     }
 
     fn extract_equations(&self, content: &str) -> Vec<String> {
         let mut equations = Vec::new();
-        
+
         // Extract display equations
         let re = Regex::new(r"\\begin\{equation\}(.*?)\\end\{equation\}").unwrap();
         for caps in re.captures_iter(content) {
@@ -291,7 +302,7 @@ impl PaperProcessor {
                 equations.push(eq.as_str().trim().to_string());
             }
         }
-        
+
         // Extract inline math
         let re = Regex::new(r"\$([^$]+)\$").unwrap();
         for caps in re.captures_iter(content) {
@@ -299,7 +310,7 @@ impl PaperProcessor {
                 equations.push(eq.as_str().trim().to_string());
             }
         }
-        
+
         equations
     }
 }

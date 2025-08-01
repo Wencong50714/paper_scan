@@ -31,23 +31,25 @@ impl NoteGenerator {
     pub fn new() -> Result<Self> {
         let client = LLMClient::new()?;
         let system_prompt = load_system_prompt()?;
-        
+
         Ok(Self {
             client,
             system_prompt,
         })
     }
 
-    pub async fn generate_note(&self, 
-        processed_content: &ProcessedContent
+    pub async fn generate_note(
+        &self,
+        processed_content: &ProcessedContent,
     ) -> Result<GeneratedNote> {
         let paper_summary = self.format_paper_content(processed_content);
-        
-        let generated_content = self.client
+
+        let generated_content = self
+            .client
             .generate_note_with_images(
                 &self.system_prompt,
                 &paper_summary,
-                &processed_content.image_files
+                &processed_content.image_files,
             )
             .await?;
 
@@ -70,20 +72,22 @@ impl NoteGenerator {
         Ok(note)
     }
 
-    fn format_paper_content(&self, 
-        processed_content: &ProcessedContent
-    ) -> String {
+    fn format_paper_content(&self, processed_content: &ProcessedContent) -> String {
         let mut content = String::new();
-        
+
         content.push_str(&format!("论文标题: {}\n\n", processed_content.title));
-        content.push_str(&format!("作者: {}\n\n", processed_content.authors.join(", ")));
+        content.push_str(&format!(
+            "作者: {}\n\n",
+            processed_content.authors.join(", ")
+        ));
         content.push_str(&format!("摘要:\n{}\n\n", processed_content.abstract_text));
-        
+
         content.push_str("章节内容:\n");
         for section in &processed_content.sections {
-            content.push_str(&format!("{} {}\n{}", 
-                "#".repeat(section.level as usize), 
-                section.title, 
+            content.push_str(&format!(
+                "{} {}\n{}",
+                "#".repeat(section.level as usize),
+                section.title,
                 section.content
             ));
             content.push_str("\n\n");
@@ -94,7 +98,7 @@ impl NoteGenerator {
             for (i, eq) in processed_content.equations.iter().enumerate() {
                 content.push_str(&format!("公式 {}: {}\n", i + 1, eq));
             }
-            content.push_str("\n");
+            content.push('\n');
         }
 
         content
@@ -107,31 +111,31 @@ impl NoteGenerator {
 
     fn post_process_latex(&self, content: &str) -> String {
         let mut processed = content.to_string();
-        
+
         // Remove first line and last line if they contain ```latex and ``` markers
         let lines: Vec<&str> = processed.lines().collect();
         if !lines.is_empty() {
             let mut start_idx = 0;
             let mut end_idx = lines.len();
-            
+
             // Check if first line starts with ```latex or ```
             if lines[0].trim().starts_with("```") {
                 start_idx = 1;
             }
-            
+
             // Check if last line is ```
             if lines.len() > start_idx && lines[lines.len() - 1].trim() == "```" {
                 end_idx = lines.len() - 1;
             }
-            
+
             if start_idx > 0 || end_idx < lines.len() {
                 processed = lines[start_idx..end_idx].join("\n");
             }
         }
-        
+
         // Replace all occurrences of {output/ with {../../output/
         processed = processed.replace("{output/", "{../../output/");
-        
+
         // Ensure the content doesn't start or end with extra newlines
         processed.trim().to_string()
     }
@@ -142,7 +146,6 @@ fn load_system_prompt() -> Result<String> {
     let content = fs::read_to_string(prompt_path)?;
     Ok(content)
 }
-
 
 impl Default for NoteGenerator {
     fn default() -> Self {
